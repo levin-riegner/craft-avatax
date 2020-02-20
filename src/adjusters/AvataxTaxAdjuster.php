@@ -15,9 +15,10 @@ class AvataxTaxAdjuster extends Component implements AdjusterInterface
 
     public function adjust(Order $order): array
     {
+
         $adjustments = [];
 
-        if($order->shippingAddress !== NULL && sizeof($order->getLineItems()) > 0)
+        if(($order->shippingAddress !== NULL || $order->estimatedShippingAddress !== NULL) && sizeof($order->getLineItems()) > 0)
         {
             $taxService = new SalesTaxService;
 
@@ -31,8 +32,15 @@ class AvataxTaxAdjuster extends Component implements AdjusterInterface
             $adjustment->sourceSnapshot = [ 'avatax' => $salesTax];
             $adjustment->amount = +$salesTax;
             $adjustment->setOrder($order);
+
+            if($order->estimatedShippingAddress) {
+                $adjustment->isEstimated = true;
+            }
+            
             $adjustments[] = $adjustment;
         }
+
+        // Craft::dd($adjustment);
 
         return $adjustments;
     }

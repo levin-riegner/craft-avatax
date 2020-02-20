@@ -53,6 +53,16 @@ class SalesTaxService extends Component
      */
     public $type;
 
+    /**
+     * @var Address
+     */
+    public $address;
+
+    /**
+     * @var bool
+     */
+    public $isEstimated = false;
+
 
     // Public Methods
     // =========================================================================
@@ -109,6 +119,10 @@ class SalesTaxService extends Component
             return false;
         }
 
+        if(!$this->address) {
+            $this->setAddress($order);
+        }
+
         $this->type = 'order';
 
         $client = $this->createClient();
@@ -144,6 +158,10 @@ class SalesTaxService extends Component
             Avatax::info(__FUNCTION__.'(): Document Committing is disabled.');
 
             return false;
+        }
+
+        if(!$this->address) {
+            $this->setAddress($order);
         }
 
         $this->type = 'invoice';
@@ -356,6 +374,10 @@ class SalesTaxService extends Component
             return false;
         }
 
+        if($address->isEstimated && !$address->zipCode) {
+            return false;
+        }
+
         $response = $this->getValidateAddress($address);
 
         if(!empty($response->validatedAddresses) || isset($response->coordinates))
@@ -363,9 +385,11 @@ class SalesTaxService extends Component
             return true;
         }
 
-        // Request failed
-        Avatax::error('Address validation failed.');
-        throw new Exception('Invalid address.');
+        if(!$address->isEstimated) {
+            // Request failed
+            Avatax::error('Address validation failed.');
+            throw new Exception('Invalid address.');
+        }
 
         return false;
     }
@@ -395,7 +419,7 @@ class SalesTaxService extends Component
             $request->line3 = '';
             $request->city = $address->city;
             $request->region = $this->getState($address);
-            $request->country = $address->country->iso;
+            $request->country = $address->country->iso ?? $address->country;
             $request->postalCode = $address->zipCode;
             $request->latitude = '';
             $request->longitude = '';
@@ -547,10 +571,16 @@ class SalesTaxService extends Component
      */
     private function getTotalTax($order, $transaction)
     {
+        if(!$this->address) {
+            $this->setAddress($order);
+        }
+
+        //Craft::dd($this->address);
+
         if($this->settings['enableAddressValidation'])
         {
             // Make sure we have a valid address before continuing.
-            if($this->validateAddress($order->shippingAddress) === false)
+            if($this->validateAddress($this->address) === false)
             {
                 return false;
             }
@@ -575,13 +605,13 @@ class SalesTaxService extends Component
             )
             ->withAddress(
                 'shipTo',
-                $order->shippingAddress->address1,
+                $this->address->address1,
                 NULL,
                 NULL,
-                $order->shippingAddress->city,
-                $this->getState($order->shippingAddress),
-                $order->shippingAddress->zipCode,
-                $order->shippingAddress->getCountry()->iso
+                $this->address->city,
+                $this->getState($this->address),
+                $this->address->zipCode,
+                $this->address->country->iso ?? $this->address->country
             );
 
         // Add each line item to the transaction
@@ -719,21 +749,38 @@ class SalesTaxService extends Component
     }
 
     /**
+     * Resolve the state based on available attributes.
+     */
+    private function setAddress(Order $order)
+    {
+        $this->address = $order->getShippingAddress();
+        
+        if (!$this->address) {
+            $this->address = $order->getEstimatedShippingAddress();
+            $this->isEstimated = true;
+        }
+    }
+
+    /**
      * Returns a hash derived from the order's properties.
      */
     private function getOrderSignature(Order $order)
     {
+        if(!$this->address) {
+            $this->setAddress($order);
+        }
+
         $orderNumber = $order->number;
         $shipping = $order->getTotalShippingCost();
         $discount = $order->getTotalDiscount();
         $tax = $order->getTotalTax();
         $total = $order->totalPrice;
 
-        $address1 = $order->shippingAddress->address1;
-        $address2 = $order->shippingAddress->address2;
-        $city = $order->shippingAddress->city;
-        $zipCode = $order->shippingAddress->zipCode;
-        $country = $order->shippingAddress->country->iso ?? $order->shippingAddress->country;
+        $address1 = $this->address->address1;
+        $address2 = $this->address->address2;
+        $city = $this->address->city;
+        $zipCode = $this->address->zipCode;
+        $country = $this->address->country->iso ?? $this->address->country;
         $address = $address1.$address2.$city.$zipCode.$country;
 
         $lineItems = '';
