@@ -705,7 +705,7 @@ class SalesTaxService extends Component
         Avatax::error('Request to avatax.com failed');
 
         // Request failed
-        throw new Exception('Request could not be completed');
+        //throw new Exception('Request could not be completed');
 
         return false;
     }

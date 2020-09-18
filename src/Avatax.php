@@ -202,6 +202,12 @@ class Avatax extends Plugin
      */
     public function onAfterInstall()
     {
+        // Don't make the same config changes twice
+        $installed = (Craft::$app->projectConfig->get('plugins.avatax', true) !== null);
+
+        if($installed)
+            return;
+
         $commerce = CommercePlugin::getInstance();
 
         // Create an "avatax" tax category
